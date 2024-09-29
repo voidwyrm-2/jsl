@@ -1,0 +1,21 @@
+func fizzbuzz 1
+    for i in $1 rrange run
+        var m5 = i 5 mod run 0 eq run
+        var m3 = i 3 mod run 0 eq run
+        if m3 m5 && run
+            "fizzbuzz" print run
+        else
+            if m5
+                "fizz" print run
+            else
+                if m3
+                    "buzz" print run
+                else
+                    i print run
+                end
+            end
+        end
+    end
+end
+
+100 fizzbuzz run

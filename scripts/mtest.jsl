@@ -1,0 +1,25 @@
+2 4 + 8 * print
+var x = 20
+x 22 + print
+
+"what's 9 + 10?" print
+
+set x = x 1 +
+
+if x 21 ==
+    "21" print
+else
+    "not 21" print
+end
+
+func greet
+    "hello!" print
+end
+
+greet
+
+func greetSomeone 1
+    "hello " $1 + "!" + print
+end
+
+"Ben" greetSomeone

@@ -1,0 +1,14 @@
+func fib 1
+    if $1 0 == $1 0 < ||
+        return 0
+    end
+
+    var a = $1 1 - fib
+    var b = $1 2 - fib
+    var c = a b +
+    c print
+
+    return c
+end
+
+10 fib
