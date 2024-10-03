@@ -1,0 +1,11 @@
+func currier
+    func adder 2
+        return $1 $2 +
+    end
+
+    return lit adder
+end
+
+var adr = currier
+
+2 4 adr

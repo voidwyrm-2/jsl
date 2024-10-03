@@ -1,22 +1,66 @@
+const _imports = {};
+try {
+    _imports.jsruntime = require("./jsruntime.js");
+} catch (_) {
+    try {
+        _imports.jsruntime = require("jsruntime");
+    } catch (error) {
+        throw new Error(`unable to load JSRuntime:\n${error}`);
+    }
+}
+
+const jsruntime = _imports.jsruntime;
+
+
+
 class JSLFunc {
+    #code;
+    #args;
     /**
     @param {string[]} code
     @param {number} args
     */
     constructor(code, args) {
-        this.code = code;
-        this.args = args;
+        this.#code = code;
+        this.#args = args;
         this.fieldToCheckIfThisObjectIsAJSLFunction = true;
     }
 
+    /**
+    @param {JSLStack} stack
+    @param {JSLContext} context
+    @param {map<string, any>} vars
+    */
     run(stack, context, vars) {
-        for (let i = 0; i < this.args; i++)
-            vars.set(`$${i + 1}`, stack.pop());
+        for (let i = 0; i < this.#args; i++) {
+            vars.set(`$${i + 1}`, v);
+        }
+
         let newVars = new Map();
         vars.forEach((v, k) => newVars.set(k, v));
-        return interpretJSL(this.code, newVars, context, 1);
+        return interpretJSL(this.#code, newVars, context, 1);
     }
 }
+
+
+
+class JSLContainer {
+    #template;
+
+    /**
+    @param {object} template
+    */
+    constructor(template) {
+        this.#template = template;
+    }
+
+    new(stack, context, vars) {
+        for (let k in Object.keys(this.#template)) {
+
+        }
+    }
+}
+
 
 /**
 @typedef {{ln: number, col: number, parentcontext: JSLContext | undefined}} JSLContext
@@ -56,36 +100,63 @@ function newJSLError(msg) {
     };
 }
 
+/**
+@enum {string}
+*/
+const JSLTypes = {
+    String: "String"
+};
+
+/**
+@typedef {{value: any, type: string}} JSLType
+
+@param {any} value 
+@param {string} type 
+@returns JSLType
+*/
+function newJSLType(value, type) {
+    return { value: value, type: type };
+}
+
 class JSLStack {
+    #stack;
+    #context;
     /**
     @param {JSLContext} context 
     @param {string[] | undefined} initialValues 
     */
     constructor(context, initialValues = undefined) {
-        this.stack = initialValues !== undefined ? initialValues : []
-        this.context = context
+        this.#stack = initialValues !== undefined ? initialValues : []
+        this.#context = context
     }
 
     push(item) {
-        this.stack.push(item);
+        this.#stack.push(item);
+    }
+
+    checkStack(throwErrorOnEmpty = true) {
+        if (this.#stack.length === 0 && throwErrorOnEmpty) {
+            throw newJSLError(formatContext(this.#context, "stack underflow"));
+        }
     }
 
     pop(throwErrorOnEmpty = true) {
-        if (this.stack.length === 0) {
-            if (throwErrorOnEmpty)
-                throw newJSLError(formatContext(this.context, "stack underflow"));
-            return undefined;
-        }
-        return this.stack.pop();
+        this.checkStack(throwErrorOnEmpty);
+        return this.#stack.pop();
     }
 
-    empty() {
-        return this.stack.length === 0;
+    peek(throwErrorOnEmpty = true) {
+        this.checkStack(throwErrorOnEmpty);
+        return this.#stack[this.#stack.length - 1];
+    }
+
+    isEmpty() {
+        return this.#stack.length === 0;
     }
 }
 
 /**
-@param {string | string[]} text
+@param {string | Array<string | JSLType>} text
 @param {Map<string, function | JSLFunc>} vars 
 @returns {any | undefined}
 */
@@ -101,12 +172,13 @@ function evalJSLExpression(text, __context, vars) {
             if (acc !== "") {
                 acc += " " + expr[i];
                 if (expr[i].endsWith('"')) {
-                    new_expr.push(acc);
+                    new_expr.push(newJSLType(acc.slice(1, acc.length - 1), JSLTypes.String));
                     acc = "";
                 }
             } else if (expr[i].startsWith('"')) {
                 if (expr[i].endsWith('"')) {
-                    new_expr.push(expr[i].trim());
+                    let s = expr[i].trim();
+                    new_expr.push(newJSLType(s.slice(1, s.length - 1), JSLTypes.String));
                 } else {
                     acc += expr[i];
                 }
@@ -122,13 +194,21 @@ function evalJSLExpression(text, __context, vars) {
 
     for (let i = 0; i < expr.length; i++) {
         context.col += expr[i].length;
-        let e = expr[i].trim();
+        let e = typeof expr[i] === "string" ? expr[i].trim() : expr[i];
         if (e === "") {
             continue;
         } else if (!isNaN(Number(e))) {
             stack.push(Number(e));
-        } else if (e.startsWith('"') && e.endsWith('"') && e.length > 1) {
-            stack.push(e.slice(1, e.length - 1));
+        } else if (e === "[]") {
+            stack.push([]);
+        } else if (e.type !== undefined) {
+            switch (e.type) {
+                case "String":
+                    stack.push(e.value);
+                    break;
+                default:
+                    throw new Error(`invalid JSLType type '${e.type}'`);
+            }
         } else if (e === "lit") {
             pushAsLiteral = true;
         } else if (e === "true" || e === "false") {
@@ -159,10 +239,18 @@ function evalJSLExpression(text, __context, vars) {
         throw newJSLError(formatContext(context, "evaluation stack has more than one value at the end of the expression"));
     }
 
-    return stack.empty() ? undefined : stack.pop();
+    return stack.isEmpty() ? undefined : stack.pop();
 }
 
-
+/**
+@param {JSLContext} ctx
+@param {object} arr
+*/
+function isArrayOperatable(arr) {
+    if (arr.push === undefined || arr.pop === undefined || arr.length === undefined)
+        return false;
+    return true;
+}
 
 /**
 @type {Map<string, Function | JSLFunc>}
@@ -215,6 +303,24 @@ let gvars = new Map();
         s.push(a);
         s.push(a);
     }],
+    ["pop", (ctx, s) => {
+        let a = s.pop();
+        if (!isArrayOperatable(a)) {
+            throw newJSLError(formatContext(ctx, `'${a}'(typeof '${typeof a.type === "string" ? a.type : typeof a}') is not operable by list operations`));
+        }
+        a.push(s.pop());
+        s.push(a);
+    }],
+    ["push", (ctx, s) => {
+        let a = s.pop();
+        if (!isArrayOperatable(a)) {
+            throw newJSLError(formatContext(ctx, `'${a}'(typeof '${typeof a.type === "string" ? a.type : typeof a}') is not operable by list operations`));
+        } else if (a.length === 0) {
+            throw newJSLError(formatContext(ctx, "cannot pop from empty list"));
+        }
+        s.push(a.pop());
+        s.push(a);
+    }],
     ["print", (_ctx, s) => console.log(s.pop(false))],
     ["printm", (_ctx, s) => {
         let a = s.pop();
@@ -223,16 +329,34 @@ let gvars = new Map();
             b.push(s.pop().toString());
         console.log(b.join(" "));
     }],
+    ["input", (_ctx, s) => {
+        let input = jsruntime.getInput();
+        if (input !== undefined) {
+            s.push(input);
+        }
+    }],
+    ["inputm", (_ctx, s) => {
+        let input = jsruntime.getInput(s.pop());
+        if (input !== undefined) {
+            s.push(input);
+        }
+    }],
+    ["throw", (ctx, s) => {
+        throw newJSLError(formatContext(ctx, s.pop()));
+    }],
     ["bye", (_ctx, _s) => {
         throw { name: "JSLExit", message: "This error is thrown to exit a JSL program, it should only be triggered by the 'bye' instruction" };
-    }]
+    }],
+
+    // JSL-written built-in functions
+    ["0=", new JSLFunc(["return $1 0 =="], 1)]
 ].forEach(elem => gvars.set(elem[0], elem[1]));
 
 /**
 @param {string} s
 @returns {boolean}
 */
-function isValidIdent(s) {
+function isValidVariableName(s) {
     for (let i = 0; i < s.length; s++) {
         if (s[i].match("[a-z]|[A-Z]|[0-9]|_") === null)
             return false;
@@ -255,41 +379,65 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
     }
 
     let funcToEndJumps = new Map();
+    let tryToCatchJumps = new Map();
+    let catchToEndJumps = new Map();
     let ifToEndJumps = new Map();
     let ifToElseJumps = new Map();
     let elseToEndJumps = new Map();
     let ifStack = [];
     lines.forEach((item, index) => {
         if (item.startsWith("if ")) {
-            ifStack.push({ ifp: index, ep: undefined, isFunc: false });
+            ifStack.push({ ifp: index, ep: undefined, type: 0 });
         } else if (item.startsWith("func ")) {
-            ifStack.push({ ifp: index, ep: undefined, isFunc: true });
+            ifStack.push({ ifp: index, ep: undefined, type: 1 });
+        } else if (item === "try") {
+            ifStack.push({ ifp: index, ep: undefined, type: 2 });
         } else if (item === "else") {
-            if (ifStack.length === 0 || ifStack.length > 0 ? ifStack[ifStack.length - 1].isFunc : false) {
+            if (ifStack.length === 0 || (ifStack.length > 0 ? ifStack[ifStack.length - 1].type !== 0 : false)) {
                 context.ln = index;
                 throw newJSLError(formatContext(context, "unexpected 'else' outside of if statement"));
             }
 
             let _if = ifStack.pop();
-            if (!_if.isFunc) {
-                _if.ep = index;
+            _if.ep = index;
+            ifStack.push(_if);
+        } else if (item.startsWith("catch ")) {
+            if (ifStack.length === 0 || (ifStack.length > 0 ? ifStack[ifStack.length - 1].type !== 2 : false)) {
+                context.ln = index;
+                throw newJSLError(formatContext(context, "unexpected 'catch' outside of try-catch"));
             }
+
+            let _if = ifStack.pop();
+            _if.ep = index;
             ifStack.push(_if);
         } else if (item === "end") {
             if (ifStack.length === 0) {
                 context.ln = index;
-                throw newJSLError(formatContext(context, "unexpected 'end' outside of if statement"));
+                throw newJSLError(formatContext(context, "unexpected 'end' outside of if statement, function block, container block, or try-catch"));
             }
 
             let _if = ifStack.pop();
-            if (_if.isFunc) {
-                funcToEndJumps.set(_if.ifp, index);
-            } else {
-                ifToEndJumps.set(_if.ifp, index);
-                if (_if.ep !== undefined) {
-                    ifToElseJumps.set(_if.ifp, _if.ep);
-                    elseToEndJumps.set(_if.ep, index);
-                }
+            switch (_if.type) {
+                case 0:
+                    ifToEndJumps.set(_if.ifp, index);
+                    if (_if.ep !== undefined) {
+                        ifToElseJumps.set(_if.ifp, _if.ep);
+                        elseToEndJumps.set(_if.ep, index);
+                    }
+                    break;
+                case 1:
+                    funcToEndJumps.set(_if.ifp, index);
+                    break;
+                case 2:
+                    if (_if.ep === undefined) {
+                        context.ln = _if.ifp;
+                        throw newJSLError(formatContext(context, "try-catch blocks must always have a catch"));
+                    }
+                    tryToCatchJumps.set(_if.ifp, _if.ep);
+                    catchToEndJumps.set(_if.ep, index);
+                    break;
+                default:
+                    throw new Error(`unexpected _if type '${_if.type}'`);
             }
         }
     });
@@ -297,7 +445,7 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
     if (ifStack.length !== 0) {
         let _if = ifStack.pop();
         context.ln = _if.ifp;
-        throw newJSLError(formatContext(context, `expected 'end' to close ${_if.isFunc ? "function" : "if statement"}`));
+        throw newJSLError(formatContext(context, `expected 'end' to close ${["if statement", "function block", "try-catch", "container block"][_if.type]}`));
     }
 
     let skips = new Map();
@@ -309,7 +457,9 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
         if (l === "" || l.startsWith(";")) {
             continue;
         } else if (skips.get(ln) !== undefined) {
-            ln = skips.get(ln);
+            ln = typeof skips.get(ln) === "object" ? skips.get(ln)[0] : skips.get(ln);
+            if (typeof skips.get(ln) === "object")
+                skips.get(ln)(vars);
             skips.delete(ln);
         } else if (l.startsWith("var ")) {
             let _l1 = l.slice(4).split(" ");
@@ -318,7 +468,7 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
 
             if (_l1[1] !== "=") {
                 throw newJSLError(formatContext(context, "expected 'var [ident] = [expression]'"));
-            } else if (!isValidIdent(_l1[0])) {
+            } else if (!isValidVariableName(_l1[0])) {
                 if (_l1[0] === "") {
                     throw newJSLError(formatContext(context, "identifiers cannot be empty"))
                 }
@@ -338,11 +488,11 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
 
             if (_l1[1] !== "=") {
                 throw newJSLError(formatContext(context, "expected 'set [ident] = [expression]'"));
-            } else if (!isValidIdent(_l1[0])) {
+            } else if (!isValidVariableName(_l1[0])) {
                 if (_l1[0] === "") {
-                    throw newJSLError(formatContext(context, "identifiers cannot be empty"))
+                    throw newJSLError(formatContext(context, "identifiers cannot be empty"));
                 }
-                throw newJSLError(formatContext(context, `invalid identifier '${_l1[0]}'`))
+                throw newJSLError(formatContext(context, `invalid identifier '${_l1[0]}'`));
             }
 
             let ident = _l1[0];
@@ -387,11 +537,50 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
 
             ln = funcToEndJumps.get(ln);
         } else if (l.startsWith("return")) {
-            console.log(subcallMode, vars.get("$1"));
+            //console.log(subcallMode, vars.get("$1"));
             if (subcallMode !== 1) {
                 throw newJSLError(formatContext(context, "cannot return outside of function"));
             }
             return evalJSLExpression(l.slice(6), newJSLContext(ln, 0, context), vars);
+        } else if (l.startsWith("rem ")) {
+            let ident = l.slice(4).trim().split(" ")[0].trim();
+            if (ident === "") {
+                throw newJSLError(formatContext(context, "expected 'rem [ident]'"));
+            } else if (vars.get(ident) === undefined) {
+                newJSLError(formatContext(context, `cannot delete variable '${ident}' as it doesn't exist`));
+            }
+            vars.delete(ident);
+        } else if (l === "try") {
+            let code = lines.slice(ln + 1, tryToCatchJumps.get(ln));
+            try {
+                interpretJSL(code, vars, newJSLContext(0, 0, context), 2);
+                ln = catchToEndJumps.get(tryToCatchJumps.get(ln));
+            } catch (error) {
+                if (error.name !== "JSLError") {
+                    throw error;
+                }
+                ln = tryToCatchJumps.get(ln);
+                context.ln = ln;
+                let c = l.trim();
+                if (c !== "catch") {
+                    let name = c.slice(5).trim();
+                    if (!isValidVariableName(name)) {
+                        throw newJSLError(formatContext(context, `'${name}' is not a valid variable name`));
+                    }
+                    // error variable not being injected into scope for some reason, despite it existing right after
+                    let old_var = vars.get(name);
+                    vars.set(name, error.message.split("\n")[0]);
+                    console.log(vars.get(name));
+                    console.log(lines[catchToEndJumps.get(ln)]);
+
+                    skips.set(catchToEndJumps.get(ln), [catchToEndJumps.get(ln), vrs => {
+                        vrs.delete(name);
+                        if (old_var !== undefined) vrs.set(name, old_var);
+                    }]);
+                } else {
+                    skips.set(catchToEndJumps.get(ln), catchToEndJumps.get(ln));
+                }
+            }
         } else {
             evalJSLExpression(l, newJSLContext(ln, 0, context), vars);
         }
@@ -399,9 +588,24 @@ function interpretJSL(code, vars = undefined, context = undefined, subcallMode =
 }
 
 try {
-    let result = interpretJSL(`var inp = -3
-var x = inp 0 == inp 0 < ||
-x print`,
+    let result = interpretJSL(`
+func askForReply
+    "type something" print
+    var y = input
+
+    if "error" y ==
+        "you typed 'error', so the program threw an error" throw 
+    else
+        "you typed: '" y + "'" + print
+    end
+end
+
+try
+    askForReply
+catch e
+    "an error was thrown: '" e + "'" + print
+end
+`,
         gvars, newJSLContext(0));
     if (result !== undefined) {
         console.log(expr);
@@ -413,3 +617,4 @@ x print`,
         console.log(error.message);
     }
 }
+

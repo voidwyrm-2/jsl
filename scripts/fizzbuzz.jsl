@@ -1,21 +1,21 @@
 func fizzbuzz 1
-    for i in $1 rrange run
-        var m5 = i 5 mod run 0 eq run
-        var m3 = i 3 mod run 0 eq run
-        if m3 m5 && run
-            "fizzbuzz" print run
+    for i in $1 rrange
+        var m5 = i 5 % 0=
+        var m3 = i 3 % 0=
+        if m3 m5 &&
+            "fizzbuzz" print
         else
             if m5
-                "fizz" print run
+                "fizz" print
             else
                 if m3
-                    "buzz" print run
+                    "buzz" print
                 else
-                    i print run
+                    i print
                 end
             end
         end
     end
 end
 
-100 fizzbuzz run
+100 fizzbuzz

@@ -1,7 +1,7 @@
 func fib 1
     var a = 0
     var b = 1
-    for i in $1 range run
+    for i in $1 range
         a b 2 printm
         var c = a
         a = b
@@ -9,4 +9,4 @@ func fib 1
     end
 end
 
-10 fib run
+10 fib
