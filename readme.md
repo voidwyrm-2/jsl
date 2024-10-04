@@ -1,15 +1,61 @@
 # JSL
-JSL is a interpreter language mostly based on FORTH
 
-JSL itself isn't stack-based, its expressions are
+JSL is a procedural dynamically-typed interpreted language with FORTH-like stack-based expressions
 
 ## Features
 
-* Basic arithmetic
-* If/else statements(no elseif)
-* Functions
+[x] Basic arithmetic
+[x] If/else statements(no elseif)
+[x] Functions
+[*] throwing and try-catch
+[ ] elsif for elseif because I enjoy Ruby
+[ ] struct-like data structures called Containers
 
-Expressions are based on FORTH's structure and by extension reverse-polish notation
+## Examples
+
+**Hello world**
+```
+"hello world!" print
 ```
 
+**Basic calculator**
+```
+var first = "what is the first number?" inputm
+
+var second = "what is the second number?" inputm
+
+var op = "what is the operation?" inputm
+
+var n1 = 0
+try
+    set n1 = first asNumber
+catch
+    first "'{}' is not a number" fprint
+    bye
+end
+
+var n2 = 0
+try
+    set n2 = second asNumber
+catch
+    second "'{}' is not a number" fprint
+    bye
+end
+
+var result = 0
+
+if op "+" ==
+    set result = n1 n2 +
+elsif op "-" ==
+    set result = n1 n2 -
+elsif op "*" ==
+    set result = n1 n2 *
+elsif op "/" ==
+    set result = n1 n2 /
+else
+    op "'{}' is not a valid operator" fprint
+    bye
+end
+
+result "the result is: {}" fprint
 ```
